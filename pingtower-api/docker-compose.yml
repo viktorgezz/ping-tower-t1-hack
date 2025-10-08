@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  pingtower-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - HOST=0.0.0.0
+      - PORT=8000
+      - SECRET_KEY=your-secret-key-change-in-production
+      - LOG_LEVEL=INFO
+      - DATABASE_URL=postgresql://postgres:Passw0rd@203.81.208.57:5432/hack
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  celery-worker:
+    build: .
+    command: python celery_worker.py
+    environment:
+      - DATABASE_URL=postgresql://postgres:Passw0rd@203.81.208.57:5432/hack
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    depends_on:
+      - pingtower-api
+      - redis
+
+  celery-beat:
+    build: .
+    command: python celery_beat.py
+    environment:
+      - DATABASE_URL=postgresql://postgres:Passw0rd@203.81.208.57:5432/hack
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    depends_on:
+      - pingtower-api
+      - redis
+
+  # Локальный Redis для Celery
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:

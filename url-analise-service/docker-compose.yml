@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  url-analysis-service:
+    build: .
+    container_name: url-analysis-service
+    ports:
+      - "8020:8000"
+    environment:
+      # Подключение к внешней Kafka
+      KAFKA_BOOTSTRAP_SERVERS: 193.124.114.117:9092
+      KAFKA_TOPIC: endpoint_test_results
+      KAFKA_USERNAME: user1
+      KAFKA_PASSWORD: pass1
+      KAFKA_SECURITY_PROTOCOL: SASL_PLAINTEXT
+      KAFKA_SASL_MECHANISM: PLAIN
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped

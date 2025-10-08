@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  log-analyzer:
+    build: .
+    container_name: log-analyzer-api
+    ports:
+      - "8001:8000"
+    environment:
+      CLICKHOUSE_HOST: 203.81.208.57
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_DATABASE: default
+      CLICKHOUSE_USER: admin
+      CLICKHOUSE_PASSWORD: Passw0rd
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+    restart: unless-stopped

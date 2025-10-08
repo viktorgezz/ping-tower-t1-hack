@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  email-alerts:
+    build: .
+    container_name: email-alerts-service
+    restart: unless-stopped
+    environment:
+      # SMTP настройки (обязательные)
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - FROM_EMAIL=${FROM_EMAIL:-${SMTP_USERNAME}}
+      
+      # Тестовые получатели (опционально)
+      - TEST_RECIPIENTS=${TEST_RECIPIENTS}
+      
+      # Python настройки
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      # Монтируем директорию для логов (опционально)
+      - ./logs:/app/logs
+    networks:
+      - email-alerts-network
+    # Если потребуется API в будущем
+    # ports:
+    #   - "8000:8000"
+
+  # Дополнительный сервис для мониторинга (опционально)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: email-alerts-redis
+  #   restart: unless-stopped
+  #   networks:
+  #     - email-alerts-network
+  #   volumes:
+  #     - redis_data:/data
+
+  # Сервис для веб-интерфейса (если потребуется в будущем)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: email-alerts-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./ssl:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - email-alerts
+  #   networks:
+  #     - email-alerts-network
+
+networks:
+  email-alerts-network:
+    driver: bridge
+
+# volumes:
+#   redis_data:

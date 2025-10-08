@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  sla-report-api:
+    build: .
+    ports:
+      - "8021:8000"
+    volumes:
+      - ./DejaVuSans.ttf:/app/DejaVuSans.ttf
+      - ./reports:/tmp/reports
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+  # Опционально: можно добавить Nginx для проксирования
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - sla-report-api

@@ -1,0 +1,167 @@
+---
+- name: Deploy repositories locally with docker-compose
+  hosts: local
+  connection: local
+  become: no
+  vars:
+    repositories:
+
+      - name: "service_scripts"
+        url: "https://gitlab.com/t1_hack/service_scripts.git"
+        branch: "main"
+        path: "./projects/service_scripts"
+
+      - name: "ai-agent"
+        url: "https://gitlab.com/t1_hack/ai-agent.git"
+        branch: "main"
+        path: "./projects/ai-agent"
+      
+      - name: "analytic-service"
+        url: "https://gitlab.com/t1_hack/analytic-service.git"
+        branch: "main"
+        path: "./projects/analytic-service"
+
+      - name: "apingtower-api"
+        url: "https://gitlab.com/t1_hack/pingtower-api.git"
+        branch: "main"
+        path: "./projects/pingtower-api"
+
+      - name: "pingtower-frontend"
+        url: "https://gitlab.com/t1_hack/pingtower-frontend.git"
+        branch: "master"
+        path: "./projects/pingtower-frontend"
+
+      - name: "sla-report-service"
+        url: "https://gitlab.com/t1_hack/sla-report-service.git"
+        branch: "main"
+        path: "./projects/sla-report-service"
+
+      - name: "url-analise-service"
+        url: "https://gitlab.com/t1_hack/url-analise-service.git"
+        branch: "main"
+        path: "./projects/url-analise-service"
+        
+      
+
+  tasks:
+    - name: Check if Git is installed
+      command: git --version
+      register: git_check
+      failed_when: false
+
+    - name: Install Git if not present (Windows)
+      win_chocolatey:
+        name: git
+        state: present
+      when: ansible_os_family == "Windows" and git_check.rc != 0
+
+    - name: Install Git if not present (Linux/Mac)
+      package:
+        name: git
+        state: present
+      when: ansible_os_family != "Windows" and git_check.rc != 0
+
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      failed_when: false
+
+    - name: Check if Docker Compose is installed
+      command: docker-compose --version
+      register: compose_check
+      failed_when: false
+
+    - name: Display Docker status
+      debug:
+        msg: "Docker installed: {{ docker_check.rc == 0 }}, Docker Compose installed: {{ compose_check.rc == 0 }}"
+
+    - name: Create projects directory
+      file:
+        path: "./projects"
+        state: directory
+        mode: '0755'
+
+    - name: Create project directories
+      file:
+        path: "{{ item.path }}"
+        state: directory
+        mode: '0755'
+      loop: "{{ repositories }}"
+
+    - name: Clone repositories
+      git:
+        repo: "{{ item.url }}"
+        dest: "{{ item.path }}"
+        version: "{{ item.branch }}"
+        force: yes
+        update: yes
+      loop: "{{ repositories }}"
+      register: git_result
+
+    - name: Check if docker-compose.yml exists in each repository
+      stat:
+        path: "{{ item.path }}/docker-compose.yml"
+      loop: "{{ repositories }}"
+      register: compose_files
+
+    - name: Check if docker-compose.yaml exists in each repository
+      stat:
+        path: "{{ item.path }}/docker-compose.yaml"
+      loop: "{{ repositories }}"
+      register: compose_files_yaml
+
+    - name: Start docker-compose services (yml)
+      docker_compose:
+        project_src: "{{ item.item.path }}"
+        state: present
+        recreate: always
+        pull: yes
+      loop: "{{ repositories }}"
+      when: 
+        - compose_files.results[loop.index0].stat.exists
+        - docker_check.rc == 0
+        - compose_check.rc == 0
+      register: compose_result_yml
+
+    - name: Start docker-compose services (yaml)
+      docker_compose:
+        project_src: "{{ item.item.path }}"
+        state: present
+        recreate: always
+        pull: yes
+      loop: "{{ repositories }}"
+      when: 
+        - compose_files_yaml.results[loop.index0].stat.exists
+        - docker_check.rc == 0
+        - compose_check.rc == 0
+      register: compose_result_yaml
+
+    - name: Display status of started services
+      debug:
+        msg: "✅ {{ item.item.name }} - Docker Compose services started successfully"
+      loop: "{{ repositories }}"
+      when: 
+        - (compose_files.results[loop.index0].stat.exists or compose_files_yaml.results[loop.index0].stat.exists)
+        - docker_check.rc == 0
+        - compose_check.rc == 0
+
+    - name: Show running containers
+      command: docker ps
+      register: running_containers
+      when: docker_check.rc == 0
+
+    - name: Display running containers
+      debug:
+        var: running_containers.stdout_lines
+      when: docker_check.rc == 0 and running_containers is defined
+
+    - name: Show project status
+      debug:
+        msg: |
+          📁 Projects cloned to:
+          {% for repo in repositories %}
+          - {{ repo.name }}: {{ repo.path }}
+          {% endfor %}
+          
+          🐳 Docker status: {{ 'Running' if docker_check.rc == 0 else 'Not installed' }}
+          📦 Docker Compose status: {{ 'Available' if compose_check.rc == 0 else 'Not available' }}

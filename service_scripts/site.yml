@@ -1,0 +1,140 @@
+---
+- name: Bootstrap host and deploy Docker Compose stack
+  hosts: localserver
+  become: true
+  vars:
+    infra_dir: /opt/infra
+    compose_file: "{{ infra_dir }}/docker-compose.yml"
+    env_file: "{{ infra_dir }}/.env"
+    docker_apt_pkgs:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+    apt_packages:
+      - git
+      - python3-apt
+      - python3-pip
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install apt packages
+      apt:
+        name: "{{ apt_packages + docker_apt_pkgs }}"
+        state: present
+        update_cache: yes
+
+    - name: Add Docker GPG key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker repo
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
+        state: present
+        filename: docker
+
+    - name: Install docker engine package
+      apt:
+        name: "docker-ce"
+        state: present
+        update_cache: yes
+
+    - name: Ensure docker service is started and enabled
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Install Docker Compose plugin via pip (fallback)
+      pip:
+        name: docker-compose
+        executable: pip3
+        state: present
+
+    - name: Create infra directory
+      file:
+        path: "{{ infra_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy docker-compose.yml to remote
+      copy:
+        src: docker-compose.yml
+        dest: "{{ compose_file }}"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copy .env.example to remote .env (you should edit for secrets)
+      copy:
+        src: .env.example
+        dest: "{{ env_file }}"
+        owner: root
+        group: root
+        mode: '0640'
+
+    - name: Copy Prometheus config
+      copy:
+        src: prometheus/prometheus.yml
+        dest: "{{ infra_dir }}/prometheus.yml"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copy Grafana provisioning dashboard (example)
+      copy:
+        src: grafana/provisioning/dashboards/example-dashboard.json
+        dest: "{{ infra_dir }}/grafana-example-dashboard.json"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Copy nginx config
+      copy:
+        src: nginx/default.conf
+        dest: "{{ infra_dir }}/nginx-default.conf"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Set vm.max_map_count for Elasticsearch
+      sysctl:
+        name: vm.max_map_count
+        value: 262144
+        state: present
+        reload: yes
+
+    - name: Ensure user 'docker' group exists and add current user (if present)
+      group:
+        name: docker
+        state: present
+
+    - name: Add remote_user to docker group (if not root)
+      user:
+        name: "{{ ansible_user_id | default('root') }}"
+        groups: docker
+        append: yes
+      when: ansible_user_id != 'root'
+
+    - name: Run docker compose up -d
+      community.docker.docker_compose:
+        project_src: "{{ infra_dir }}"
+        files:
+          - "{{ compose_file }}"
+        state: present
+        restarted: true
+
+  handlers:
+    - name: restart docker
+      service:
+        name: docker
+        state: restarted
